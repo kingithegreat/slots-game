@@ -1,0 +1,23 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: dark;
+  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 12px;
+  color: #f3e9ff;
+  background:
+    radial-gradient(ellipse at 50% -20%, #0f4a5c 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 110%, #2a1245 0%, transparent 60%),
+    #0b1420;
+}
