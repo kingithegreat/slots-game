@@ -8,7 +8,8 @@ import {
   spin,
   playSpin,
 } from './engine/engine.js';
-import { useGameStore, BET_STEPS } from './store.js';
+import { MACHINES, MACHINE_IDS } from './engine/machines.js';
+import { useGameStore, BET_STEPS, xpForNextLevel, HOUR_MS, hourlyAmount } from './store.js';
 import * as sound from './sound.js';
 import { haptics } from './haptics.js';
 import Reel from './components/Reel.jsx';
@@ -16,6 +17,8 @@ import RollUp from './components/RollUp.jsx';
 import Paytable from './components/Paytable.jsx';
 import WinCelebration from './components/WinCelebration.jsx';
 import PickABox from './components/PickABox.jsx';
+import DailyWheel from './components/DailyWheel.jsx';
+import OutOfCoins from './components/OutOfCoins.jsx';
 import './App.css';
 
 const FIRST_STOP_MS = 900; // reel 1 stops here...
@@ -37,11 +40,23 @@ export default function App() {
   const lastWin = useGameStore((s) => s.lastWin);
   const muted = useGameStore((s) => s.muted);
   const freeSpinsLeft = useGameStore((s) => s.freeSpinsLeft);
+  const machineId = useGameStore((s) => s.machineId);
+  const level = useGameStore((s) => s.level);
+  const xp = useGameStore((s) => s.xp);
 
+  const machine = MACHINES[machineId];
   const betPerLine = BET_STEPS[betIndex];
   const totalBet = betPerLine * LINES;
 
-  const [grid, setGrid] = useState(() => spin().grid);
+  // Grid is tagged with its machine — on a machine switch the reset happens
+  // during render, so old symbols never render against the new symbol set.
+  const [gridState, setGridState] = useState(() => ({ machineId, grid: spin(machine).grid }));
+  if (gridState.machineId !== machineId) {
+    setGridState({ machineId, grid: spin(machine).grid });
+  }
+  const grid = gridState.grid;
+  const setGrid = (updater) =>
+    setGridState((gs) => ({ ...gs, grid: typeof updater === 'function' ? updater(gs.grid) : updater }));
   const [spinningReels, setSpinningReels] = useState(() => Array(REELS).fill(false));
   const [anticipatingReel, setAnticipatingReel] = useState(null);
   const [highlights, setHighlights] = useState(new Set());
@@ -50,22 +65,27 @@ export default function App() {
   const [celebration, setCelebration] = useState(null); // { tier, amount }
   const [bonusBet, setBonusBet] = useState(null); // total bet of the triggering spin
   const [inFreeSession, setInFreeSession] = useState(false);
+  const [showWheel, setShowWheel] = useState(false);
+  const [showOutOfCoins, setShowOutOfCoins] = useState(false);
+  const [clock, setClock] = useState(Date.now()); // for claim countdowns
 
   const timers = useRef([]);
   const freeTotalRef = useRef(0);
   // Ref mirrors inFreeSession for the async spin flow — timeout callbacks
   // capture stale state, the ref is always current.
   const freeSessionRef = useRef(false);
+  // The machine free spins were triggered on — switching is blocked during a
+  // session, but a reload could land elsewhere; spins must use this machine.
+  const machineRef = useRef(machine);
+  machineRef.current = machine;
   const paytableRef = useRef(null);
-
-  function setFreeSession(active) {
-    freeSessionRef.current = active;
-    setInFreeSession(active);
-    if (active) freeTotalRef.current = 0;
-  }
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   useEffect(() => sound.setMuted(muted), [muted]);
+  useEffect(() => {
+    const t = setInterval(() => setClock(Date.now()), 20_000);
+    return () => clearInterval(t);
+  }, []);
   useEffect(() => {
     if (freeSpinsLeft > 0 && !busy && !inFreeSession) {
       setMessage({
@@ -77,6 +97,17 @@ export default function App() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
+
+  function setFreeSession(active) {
+    freeSessionRef.current = active;
+    setInFreeSession(active);
+    if (active) freeTotalRef.current = 0;
+  }
+
+  const store = useGameStore.getState();
+  const dailyReady = store.dailyReady(clock);
+  const hourlyReady = store.hourlyReady(clock);
+  const hourlyWaitMin = Math.ceil((HOUR_MS - (clock - useGameStore((s) => s.lastHourlyClaim))) / 60_000);
 
   const canSpin = !busy && bonusBet === null && (freeSpinsLeft > 0 || balance >= totalBet);
   const broke = balance < BET_STEPS[0] * LINES && freeSpinsLeft === 0;
@@ -93,14 +124,26 @@ export default function App() {
   }
 
   function runSpin(isFree) {
-    const store = useGameStore.getState();
-    const bet = isFree ? store.freeSpinBet : BET_STEPS[store.betIndex];
+    const s = useGameStore.getState();
+    const m = machineRef.current;
+    const bet = isFree ? s.freeSpinBet : BET_STEPS[s.betIndex];
     const spinTotalBet = bet * LINES;
 
-    if (isFree) store.useFreeSpin();
-    else if (!store.placeBet()) return;
+    if (isFree) s.useFreeSpin();
+    else {
+      if (!s.placeBet()) return;
+      const levelsGained = s.grantXp(spinTotalBet);
+      if (levelsGained > 0) {
+        const newLevel = useGameStore.getState().level;
+        later(() => {
+          sound.winBig();
+          setMessage({ text: `⬆️ LEVEL ${newLevel}! ${MACHINES.grotto.unlockLevel === newLevel ? 'Glowworm Grotto unlocked!' : ''}`, tier: 'jackpot' });
+        }, 300);
+      }
+    }
 
     const result = playSpin(
+      m,
       bet,
       LINES,
       Math.random,
@@ -122,7 +165,7 @@ export default function App() {
     // Scatter (needs 3 anywhere) checks reels 1–4; TIKI trio checks reels 2+3.
     const scattersFirst4 = result.grid
       .slice(0, 4)
-      .reduce((n, col) => n + col.filter((s) => s === SCATTER).length, 0);
+      .reduce((n, col) => n + col.filter((sym) => sym === SCATTER).length, 0);
     let anticipateTarget = null;
     if (scattersFirst4 >= 2) anticipateTarget = 4;
     else if (!isFree && result.grid[1].includes(WILD) && result.grid[2].includes(WILD))
@@ -137,7 +180,7 @@ export default function App() {
     for (let r = 0; r < REELS; r++) {
       later(() => {
         setGrid((g) => g.map((col, i) => (i === r ? result.grid[r] : col)));
-        setSpinningReels((s) => s.map((v, i) => (i === r ? false : v)));
+        setSpinningReels((sp) => sp.map((v, i) => (i === r ? false : v)));
         sound.reelStop(r);
         haptics.reelStop();
         if (result.grid[r].includes(SCATTER)) sound.scatterLand();
@@ -152,7 +195,7 @@ export default function App() {
   }
 
   function settle(result, isFree, spinTotalBet) {
-    const store = useGameStore.getState();
+    const s = useGameStore.getState();
     setAnticipatingReel(null);
     sound.spinEnd();
 
@@ -166,10 +209,10 @@ export default function App() {
     setHighlights(cells);
 
     if (isFree) {
-      store.addWin(result.totalWin);
+      s.addWin(result.totalWin);
       freeTotalRef.current += result.totalWin;
     } else {
-      store.settleWin(result.totalWin);
+      s.settleWin(result.totalWin);
     }
 
     const tier = tierFor(result.totalWin, spinTotalBet);
@@ -197,10 +240,10 @@ export default function App() {
 
     if (result.freeSpinsAwarded > 0) {
       if (isFree) {
-        store.addFreeSpins(result.freeSpinsAwarded);
+        s.addFreeSpins(result.freeSpinsAwarded);
         setMessage({ text: `🐚 RETRIGGER! +${result.freeSpinsAwarded} free spins`, tier: 'jackpot' });
       } else {
-        store.startFreeSpins(result.freeSpinsAwarded, spinTotalBet / LINES);
+        s.startFreeSpins(result.freeSpinsAwarded, spinTotalBet / LINES);
         setMessage({
           text: `🐚 ${result.scatter.count} pāua — ${result.freeSpinsAwarded} FREE SPINS ×${FREE_SPIN_MULTIPLIER}!`,
           tier: 'jackpot',
@@ -250,8 +293,31 @@ export default function App() {
     setBusy(false);
   }
 
+  function handleMachineSelect(id) {
+    if (busy || id === machineId) return;
+    if (!useGameStore.getState().selectMachine(id)) {
+      setMessage({
+        text: `🔒 ${MACHINES[id].name} unlocks at level ${MACHINES[id].unlockLevel}`,
+        tier: 'lose',
+      });
+      return;
+    }
+    setHighlights(new Set());
+    setMessage({ text: `${MACHINES[id].name} — ${MACHINES[id].tagline}`, tier: '' });
+  }
+
+  function handleHourly() {
+    sound.unlock();
+    const prize = useGameStore.getState().claimHourly();
+    if (prize > 0) {
+      sound.winSmall();
+      setClock(Date.now());
+      setMessage({ text: `⏱ Hourly top-up: +${prize.toLocaleString()} coins`, tier: 'win' });
+    }
+  }
+
   return (
-    <main className="machine">
+    <main className="machine" style={machine.theme}>
       <header className="machine-top">
         <h1 className="title">🎰 Pokie Palace</h1>
         <div className="top-buttons">
@@ -272,6 +338,55 @@ export default function App() {
         </div>
       </header>
 
+      <div className="meta-row">
+        <div className="level-chip" title={`${xp.toLocaleString()} / ${xpForNextLevel(level).toLocaleString()} XP`}>
+          <span className="level-num">LV {level}</span>
+          <span className="xp-bar">
+            <span className="xp-fill" style={{ width: `${Math.min(100, (xp / xpForNextLevel(level)) * 100)}%` }} />
+          </span>
+        </div>
+        <div className="claims">
+          <button
+            className="pill-btn claim-btn"
+            type="button"
+            disabled={!dailyReady || busy}
+            onClick={() => {
+              sound.unlock();
+              setShowWheel(true);
+            }}
+          >
+            🎡 {dailyReady ? 'Daily wheel!' : 'Tomorrow'}
+          </button>
+          <button
+            className="pill-btn claim-btn"
+            type="button"
+            disabled={!hourlyReady || busy}
+            onClick={handleHourly}
+          >
+            ⏱ {hourlyReady ? `+${hourlyAmount(level).toLocaleString()}` : `${hourlyWaitMin}m`}
+          </button>
+        </div>
+      </div>
+
+      <nav className="machine-tabs">
+        {MACHINE_IDS.map((id) => {
+          const m = MACHINES[id];
+          const locked = level < m.unlockLevel;
+          return (
+            <button
+              key={id}
+              type="button"
+              className={`machine-tab${id === machineId ? ' active' : ''}`}
+              disabled={busy || freeSpinsLeft > 0}
+              onClick={() => handleMachineSelect(id)}
+            >
+              {locked ? '🔒 ' : ''}{m.name}
+              {locked && <span className="tab-lock"> · LV {m.unlockLevel}</span>}
+            </button>
+          );
+        })}
+      </nav>
+
       {(freeSpinsLeft > 0 || inFreeSession) && (
         <div className="freespin-banner">
           🐚 FREE SPINS — {freeSpinsLeft} left · all wins ×{FREE_SPIN_MULTIPLIER}
@@ -282,7 +397,8 @@ export default function App() {
         <div className="reels">
           {grid.map((symbols, i) => (
             <Reel
-              key={i}
+              key={`${machineId}-${i}`}
+              machine={machine}
               index={i}
               spinning={spinningReels[i]}
               symbols={symbols}
@@ -340,8 +456,8 @@ export default function App() {
       </button>
 
       {broke && !busy && (
-        <button className="text-btn visible" type="button" onClick={useGameStore.getState().topUp}>
-          Out of coins — grab a free top-up
+        <button className="text-btn visible" type="button" onClick={() => setShowOutOfCoins(true)}>
+          Out of coins — get a refill
         </button>
       )}
 
@@ -349,7 +465,7 @@ export default function App() {
         Virtual coins only. Coins have no real-world value and cannot be cashed out.
       </footer>
 
-      <Paytable dialogRef={paytableRef} />
+      <Paytable machine={machine} dialogRef={paytableRef} />
 
       {celebration && (
         <WinCelebration
@@ -360,6 +476,8 @@ export default function App() {
       )}
 
       {bonusBet !== null && <PickABox totalBet={bonusBet} onFinish={handleBonusFinish} />}
+      {showWheel && <DailyWheel onClose={() => setShowWheel(false)} />}
+      {showOutOfCoins && <OutOfCoins onClose={() => setShowOutOfCoins(false)} />}
     </main>
   );
 }

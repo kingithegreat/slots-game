@@ -1,43 +1,18 @@
-// Pokie Palace — core slot engine (Phase 1)
+// Pokie Palace — core slot engine.
 //
 // Maths model: weighted virtual reel strips. The RNG picks a stop position on
-// each physical strip — it never picks outcomes. RTP is tuned by strip
-// composition + paytable and verified by simulate.js (target band 92–96%).
+// each physical strip — it never picks outcomes. RTP is tuned per machine by
+// strip composition + paytable (src/engine/machines.js) and verified by
+// simulate.js (target band 92–96%).
+
+import { MACHINES } from './machines.js';
 
 export const ROWS = 3;
 export const REELS = 5;
 export const LINES = 20;
 
-export const SYMBOLS = {
-  KIWI: { id: 'KIWI', label: 'Kiwi', emoji: '🥝' },
-  POHUTUKAWA: { id: 'POHUTUKAWA', label: 'Pōhutukawa', emoji: '🌺' },
-  FERN: { id: 'FERN', label: 'Silver Fern', emoji: '🌿' },
-  KORU: { id: 'KORU', label: 'Koru', emoji: '🌀' },
-  A: { id: 'A', label: 'A', letter: 'A' },
-  K: { id: 'K', label: 'K', letter: 'K' },
-  Q: { id: 'Q', label: 'Q', letter: 'Q' },
-  J: { id: 'J', label: 'J', letter: 'J' },
-  TIKI: { id: 'TIKI', label: 'Tiki (Wild)', emoji: '🗿' },
-  PAUA: { id: 'PAUA', label: 'Pāua (Scatter)', emoji: '🐚' },
-};
-
 export const WILD = 'TIKI'; // appears on reels 2–4 only, substitutes for all line symbols
 export const SCATTER = 'PAUA'; // pays anywhere, on total bet; 3+ triggers free spins
-
-// Line payouts, as multiples of bet-per-line, for 3 / 4 / 5 of a kind
-// (left-to-right). Tuned via simulate.js — combined RTP 94.0–94.5% across
-// independent 2M-spin runs (band 92–96%): base ~75.4% + free spins ~15.6%
-// + pick-a-box ~3.2%. Hit freq ~38%; free spins ~1 in 107; bonus ~1 in 345.
-export const PAYTABLE = {
-  KIWI: [100, 400, 1250],
-  POHUTUKAWA: [65, 190, 500],
-  FERN: [40, 100, 320],
-  KORU: [25, 65, 190],
-  A: [13, 40, 130],
-  K: [13, 33, 100],
-  Q: [8, 26, 80],
-  J: [5, 21, 65],
-};
 
 // Scatter payouts, as multiples of TOTAL bet, for 3 / 4 / 5 anywhere on grid.
 export const SCATTER_PAYTABLE = { 3: 2, 4: 10, 5: 50 };
@@ -88,15 +63,6 @@ export const PAYLINES = [
   [0, 2, 2, 2, 0],
 ];
 
-// Strip composition per reel (symbol -> count). Wild only on reels 2–4.
-const STRIP_COUNTS = [
-  { KIWI: 3, POHUTUKAWA: 4, FERN: 5, KORU: 6, A: 8, K: 9, Q: 10, J: 11, PAUA: 2 },
-  { KIWI: 3, POHUTUKAWA: 4, FERN: 5, KORU: 6, A: 8, K: 8, Q: 9, J: 10, TIKI: 3, PAUA: 2 },
-  { KIWI: 3, POHUTUKAWA: 4, FERN: 5, KORU: 6, A: 8, K: 8, Q: 9, J: 10, TIKI: 3, PAUA: 2 },
-  { KIWI: 3, POHUTUKAWA: 4, FERN: 5, KORU: 6, A: 8, K: 8, Q: 9, J: 10, TIKI: 3, PAUA: 2 },
-  { KIWI: 3, POHUTUKAWA: 4, FERN: 5, KORU: 6, A: 8, K: 9, Q: 10, J: 11, PAUA: 2 },
-];
-
 // Deterministic PRNG for strip layout only, so strips are identical on every
 // load (spins use the injected RNG, Math.random by default).
 function mulberry32(seed) {
@@ -144,23 +110,36 @@ function buildStrip(counts, seed) {
   }
 }
 
-export const REEL_STRIPS = STRIP_COUNTS.map((counts, i) => buildStrip(counts, 0xc0ffee + i * 101));
+const stripCache = new Map();
+
+/** Reel strips for a machine (built once, deterministic per machine). */
+export function reelStrips(machine) {
+  let strips = stripCache.get(machine.id);
+  if (!strips) {
+    strips = machine.stripCounts.map((counts, i) => buildStrip(counts, machine.stripSeed + i * 101));
+    stripCache.set(machine.id, strips);
+  }
+  return strips;
+}
 
 /**
  * Spin: pick a stop position per reel, read ROWS consecutive symbols.
+ * @param {object} machine - a MACHINES entry
  * @param {() => number} rng - returns a float in [0, 1)
  * @returns {{ stops: number[], grid: string[][] }} grid[reel][row]
  */
-export function spin(rng = Math.random) {
-  const stops = REEL_STRIPS.map((strip) => Math.floor(rng() * strip.length));
-  const grid = REEL_STRIPS.map((strip, r) =>
+export function spin(machine, rng = Math.random) {
+  const strips = reelStrips(machine);
+  const stops = strips.map((strip) => Math.floor(rng() * strip.length));
+  const grid = strips.map((strip, r) =>
     Array.from({ length: ROWS }, (_, row) => strip[(stops[r] + row) % strip.length])
   );
   return { stops, grid };
 }
 
 /**
- * Evaluate a grid.
+ * Evaluate a grid against a machine's paytable.
+ * @param {object} machine - a MACHINES entry
  * @param {string[][]} grid - grid[reel][row]
  * @param {number} betPerLine
  * @param {number} lines - number of active paylines (fixed at 20 in the game)
@@ -176,8 +155,9 @@ export function spin(rng = Math.random) {
  *   wildCells: Array<[number, number]>,
  * }}
  */
-export function evaluate(grid, betPerLine, lines = LINES, opts = {}) {
+export function evaluate(machine, grid, betPerLine, lines = LINES, opts = {}) {
   const { multiplier = 1, allowBonus = true } = opts;
+  const paytable = machine.paytable;
   const totalBet = betPerLine * lines;
   const lineWins = [];
 
@@ -205,7 +185,7 @@ export function evaluate(grid, betPerLine, lines = LINES, opts = {}) {
     // A run of only wilds can't happen on lines (no wild on reel 1), so a
     // null symbol means the line started with a scatter — no win.
     if (symbol === null || count < 3) continue;
-    const pays = PAYTABLE[symbol];
+    const pays = paytable[symbol];
     if (!pays) continue;
     const win = pays[count - 3] * betPerLine * multiplier;
     if (win > 0) {
@@ -253,8 +233,10 @@ export function evaluate(grid, betPerLine, lines = LINES, opts = {}) {
 }
 
 /** Convenience: spin + evaluate in one call. */
-export function playSpin(betPerLine, lines = LINES, rng = Math.random, opts = {}) {
-  const { stops, grid } = spin(rng);
-  const result = evaluate(grid, betPerLine, lines, opts);
+export function playSpin(machine, betPerLine, lines = LINES, rng = Math.random, opts = {}) {
+  const { stops, grid } = spin(machine, rng);
+  const result = evaluate(machine, grid, betPerLine, lines, opts);
   return { stops, grid, ...result };
 }
+
+export { MACHINES };
