@@ -19,6 +19,7 @@ import WinCelebration from './components/WinCelebration.jsx';
 import PickABox from './components/PickABox.jsx';
 import DailyWheel from './components/DailyWheel.jsx';
 import OutOfCoins from './components/OutOfCoins.jsx';
+import PiggyBank from './components/PiggyBank.jsx';
 import './App.css';
 
 const FIRST_STOP_MS = 900; // reel 1 stops here...
@@ -67,6 +68,8 @@ export default function App() {
   const [inFreeSession, setInFreeSession] = useState(false);
   const [showWheel, setShowWheel] = useState(false);
   const [showOutOfCoins, setShowOutOfCoins] = useState(false);
+  const [showPiggy, setShowPiggy] = useState(false);
+  const piggyBank = useGameStore((s) => s.piggyBank);
   const [clock, setClock] = useState(Date.now()); // for claim countdowns
 
   const timers = useRef([]);
@@ -365,6 +368,14 @@ export default function App() {
           >
             ⏱ {hourlyReady ? `+${hourlyAmount(level).toLocaleString()}` : `${hourlyWaitMin}m`}
           </button>
+          <button
+            className="pill-btn claim-btn"
+            type="button"
+            disabled={busy}
+            onClick={() => setShowPiggy(true)}
+          >
+            🐷 {piggyBank >= 1000 ? `${Math.floor(piggyBank / 1000)}k` : piggyBank}
+          </button>
         </div>
       </div>
 
@@ -478,6 +489,7 @@ export default function App() {
       {bonusBet !== null && <PickABox totalBet={bonusBet} onFinish={handleBonusFinish} />}
       {showWheel && <DailyWheel onClose={() => setShowWheel(false)} />}
       {showOutOfCoins && <OutOfCoins onClose={() => setShowOutOfCoins(false)} />}
+      {showPiggy && <PiggyBank onClose={() => setShowPiggy(false)} />}
     </main>
   );
 }

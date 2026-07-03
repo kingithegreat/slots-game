@@ -82,5 +82,6 @@ Current tuning (independent 2M-spin full-cycle runs per machine):
 - [x] **Phase 4 — Retention & economy**: daily bonus wheel, hourly top-up,
   level/XP progression, second themed machine (Glowworm Grotto), out-of-coins
   flow with rewarded-ad stub + coin-shop preview
-- [ ] Phase 5 — Monetisation: rewarded ads (AdMob), coin pack IAP, piggy bank
+- [ ] Phase 5 — Monetisation: rewarded ads (AdMob), coin pack IAP, piggy-bank
+  smash purchase (accrual of 5% of every win is already live)
 - [ ] Phase 6 — Ship: Capacitor Android build, Play Store listing, analytics

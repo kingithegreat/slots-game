@@ -22,6 +22,10 @@ export const hourlyAmount = (level) => 2000 + 500 * (level - 1);
 // --- Out-of-coins rewarded "ad" (stubbed until AdMob lands in Phase 5)
 export const AD_REWARD = 50_000;
 
+// --- Piggy bank: a cut of every win accrues in a locked bank; smashing it
+// is a small IAP (Phase 5 billing — accrual runs now so it's full at launch).
+export const PIGGY_RATE = 0.05;
+
 export const useGameStore = create(
   persist(
     (set, get) => ({
@@ -34,6 +38,7 @@ export const useGameStore = create(
       xp: 0, // progress within the current level
       lastDailyClaim: 0, // epoch ms
       lastHourlyClaim: 0, // epoch ms
+      piggyBank: 0, // locked coins; smashing is a Phase 5 IAP
       // Free spins survive a reload: count + the bet they were triggered at.
       freeSpinsLeft: 0,
       freeSpinBet: 0,
@@ -78,10 +83,18 @@ export const useGameStore = create(
       },
 
       settleWin: (amount) =>
-        set((s) => ({ balance: s.balance + amount, lastWin: amount })),
+        set((s) => ({
+          balance: s.balance + amount,
+          lastWin: amount,
+          piggyBank: s.piggyBank + Math.floor(amount * PIGGY_RATE),
+        })),
 
       addWin: (amount) =>
-        set((s) => ({ balance: s.balance + amount, lastWin: s.lastWin + amount })),
+        set((s) => ({
+          balance: s.balance + amount,
+          lastWin: s.lastWin + amount,
+          piggyBank: s.piggyBank + Math.floor(amount * PIGGY_RATE),
+        })),
 
       startFreeSpins: (count, betPerLine) =>
         set({ freeSpinsLeft: count, freeSpinBet: betPerLine }),
@@ -119,6 +132,7 @@ export const useGameStore = create(
         xp: s.xp,
         lastDailyClaim: s.lastDailyClaim,
         lastHourlyClaim: s.lastHourlyClaim,
+        piggyBank: s.piggyBank,
         freeSpinsLeft: s.freeSpinsLeft,
         freeSpinBet: s.freeSpinBet,
       }),
