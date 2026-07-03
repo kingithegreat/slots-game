@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { WHEEL_SEGMENTS, wheelBase, useGameStore } from '../store.js';
 import * as sound from '../sound.js';
+import { track } from '../analytics.js';
 
 const SEG_ANGLE = 360 / WHEEL_SEGMENTS.length;
 const WHEEL_COLORS = ['#f5c542', '#1a4459', '#e8834a', '#235a75', '#f5c542', '#1a4459', '#e8834a', '#235a75'];
@@ -28,6 +29,7 @@ export default function DailyWheel({ onClose }) {
     setTimeout(() => {
       sound.spinEnd();
       const won = useGameStore.getState().claimDaily(seg);
+      track('daily_wheel', { prize: won });
       setPrize(won);
       setSpinning(false);
       sound.winBig();

@@ -9,8 +9,9 @@ Master / Slotomania; store listings use a simulated-gambling content rating.
 
 ## Stack
 
-React 19 + Vite + Zustand (localStorage persistence). Capacitor, Tone.js,
-AdMob and Google Play Billing arrive in later phases.
+React 19 + Vite + Zustand (localStorage persistence) + Tone.js (synthesized
+audio) + Capacitor (Android shell). AdMob and Google Play Billing arrive in
+Phase 5.
 
 ## Run it
 
@@ -19,6 +20,26 @@ npm install
 npm run dev      # local dev server
 npm run build    # production build to dist/
 ```
+
+### Android (Capacitor)
+
+The `android/` project is scaffolded (`appId: nz.pokiepalace.app`). With an
+Android SDK installed:
+
+```sh
+npm run build && npx cap sync android
+npx cap open android   # or: cd android && ./gradlew assembleDebug
+```
+
+Haptics automatically use the native Capacitor plugin inside the shell and
+fall back to the Web Vibration API in browsers.
+
+### Analytics
+
+`src/analytics.js` buffers events locally (spin count, session length, coin
+sink/source, feature triggers, ad/IAP conversion points) and mirrors them to
+`console.debug` in dev. Wire a real backend in Phase 6 with `setSink(fn)` —
+every event flows through it. `getSummary()` aggregates the local buffer.
 
 ## Machines
 
@@ -84,4 +105,6 @@ Current tuning (independent 2M-spin full-cycle runs per machine):
   flow with rewarded-ad stub + coin-shop preview
 - [ ] Phase 5 — Monetisation: rewarded ads (AdMob), coin pack IAP, piggy-bank
   smash purchase (accrual of 5% of every win is already live)
-- [ ] Phase 6 — Ship: Capacitor Android build, Play Store listing, analytics
+- [ ] Phase 6 — Ship: Play Store listing + signed release build (Capacitor
+  Android scaffold, native haptics and the analytics event layer are done;
+  remaining: signing key, store listing, analytics backend via `setSink`)

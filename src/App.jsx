@@ -12,6 +12,7 @@ import { MACHINES, MACHINE_IDS } from './engine/machines.js';
 import { useGameStore, BET_STEPS, xpForNextLevel, HOUR_MS, hourlyAmount } from './store.js';
 import * as sound from './sound.js';
 import { haptics } from './haptics.js';
+import { track } from './analytics.js';
 import Reel from './components/Reel.jsx';
 import RollUp from './components/RollUp.jsx';
 import Paytable from './components/Paytable.jsx';
@@ -138,6 +139,7 @@ export default function App() {
       const levelsGained = s.grantXp(spinTotalBet);
       if (levelsGained > 0) {
         const newLevel = useGameStore.getState().level;
+        track('level_up', { level: newLevel });
         later(() => {
           sound.winBig();
           setMessage({ text: `⬆️ LEVEL ${newLevel}! ${MACHINES.grotto.unlockLevel === newLevel ? 'Glowworm Grotto unlocked!' : ''}`, tier: 'jackpot' });
@@ -201,6 +203,14 @@ export default function App() {
     const s = useGameStore.getState();
     setAnticipatingReel(null);
     sound.spinEnd();
+    track('spin', {
+      machine: machineRef.current.id,
+      bet: spinTotalBet,
+      win: result.totalWin,
+      isFree,
+    });
+    if (result.freeSpinsAwarded > 0 && !isFree) track('free_spins_trigger', { bet: spinTotalBet });
+    if (result.bonusTriggered) track('bonus_trigger', { bet: spinTotalBet });
 
     const cells = new Set(
       [
@@ -271,6 +281,7 @@ export default function App() {
 
   function handleBonusFinish(prize) {
     useGameStore.getState().addWin(prize);
+    track('bonus_collect', { prize });
     sound.winBig();
     haptics.bigWin();
     setBonusBet(null);
@@ -306,6 +317,7 @@ export default function App() {
       return;
     }
     setHighlights(new Set());
+    track('machine_switch', { machine: id });
     setMessage({ text: `${MACHINES[id].name} — ${MACHINES[id].tagline}`, tier: '' });
   }
 
@@ -313,6 +325,7 @@ export default function App() {
     sound.unlock();
     const prize = useGameStore.getState().claimHourly();
     if (prize > 0) {
+      track('hourly_claim', { prize });
       sound.winSmall();
       setClock(Date.now());
       setMessage({ text: `⏱ Hourly top-up: +${prize.toLocaleString()} coins`, tier: 'win' });
@@ -467,7 +480,14 @@ export default function App() {
       </button>
 
       {broke && !busy && (
-        <button className="text-btn visible" type="button" onClick={() => setShowOutOfCoins(true)}>
+        <button
+          className="text-btn visible"
+          type="button"
+          onClick={() => {
+            track('out_of_coins_shown', {});
+            setShowOutOfCoins(true);
+          }}
+        >
           Out of coins — get a refill
         </button>
       )}

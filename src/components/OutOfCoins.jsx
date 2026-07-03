@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AD_REWARD, useGameStore } from '../store.js';
 import * as sound from '../sound.js';
+import { track } from '../analytics.js';
 
 const AD_SECONDS = 5;
 
@@ -22,6 +23,7 @@ export default function OutOfCoins({ onClose }) {
     if (adLeft === null) return undefined;
     if (adLeft === 0) {
       useGameStore.getState().claimAdReward();
+      track('ad_reward', { prize: AD_REWARD });
       sound.winBig();
       onClose();
       return undefined;
