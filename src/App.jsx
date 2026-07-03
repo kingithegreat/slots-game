@@ -12,6 +12,7 @@ import { MACHINES, MACHINE_IDS } from './engine/machines.js';
 import { useGameStore, BET_STEPS, xpForNextLevel, HOUR_MS, hourlyAmount } from './store.js';
 import * as sound from './sound.js';
 import { haptics } from './haptics.js';
+import { initAds } from './ads.js';
 import { track } from './analytics.js';
 import Reel from './components/Reel.jsx';
 import RollUp from './components/RollUp.jsx';
@@ -86,6 +87,9 @@ export default function App() {
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   useEffect(() => sound.setMuted(muted), [muted]);
+  useEffect(() => {
+    initAds();
+  }, []);
   useEffect(() => {
     const t = setInterval(() => setClock(Date.now()), 20_000);
     return () => clearInterval(t);
