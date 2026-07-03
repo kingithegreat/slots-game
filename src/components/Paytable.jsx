@@ -29,7 +29,9 @@ export default function Paytable({ dialogRef }) {
         </tbody>
       </table>
       <p className="paytable-note">
-        3+ pāua award {FREE_SPINS_AWARDED} free spins (bonus round lands in Phase 3).
+        3+ pāua award {FREE_SPINS_AWARDED} free spins with all wins doubled (retriggers add
+        {' '}{FREE_SPINS_AWARDED} more). A tiki on each of reels 2, 3 and 4 opens the
+        Tiki Trio pick-a-box bonus.
       </p>
       <form method="dialog">
         <button className="pill-btn" type="submit">Close</button>

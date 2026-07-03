@@ -25,23 +25,44 @@ export const WILD = 'TIKI'; // appears on reels 2–4 only, substitutes for all 
 export const SCATTER = 'PAUA'; // pays anywhere, on total bet; 3+ triggers free spins
 
 // Line payouts, as multiples of bet-per-line, for 3 / 4 / 5 of a kind
-// (left-to-right). Tuned via simulate.js — RTP 93.1–93.4% across independent
-// 2M-spin runs (band 92–96%), hit frequency ~38%, free spins ~1 in 107.
+// (left-to-right). Tuned via simulate.js — combined RTP 94.0–94.5% across
+// independent 2M-spin runs (band 92–96%): base ~75.4% + free spins ~15.6%
+// + pick-a-box ~3.2%. Hit freq ~38%; free spins ~1 in 107; bonus ~1 in 345.
 export const PAYTABLE = {
-  KIWI: [125, 500, 1600],
-  POHUTUKAWA: [80, 240, 650],
-  FERN: [50, 125, 400],
-  KORU: [30, 80, 240],
-  A: [17, 49, 160],
-  K: [16, 41, 128],
-  Q: [10, 33, 102],
-  J: [6, 26, 82],
+  KIWI: [100, 400, 1250],
+  POHUTUKAWA: [65, 190, 500],
+  FERN: [40, 100, 320],
+  KORU: [25, 65, 190],
+  A: [13, 40, 130],
+  K: [13, 33, 100],
+  Q: [8, 26, 80],
+  J: [5, 21, 65],
 };
 
 // Scatter payouts, as multiples of TOTAL bet, for 3 / 4 / 5 anywhere on grid.
 export const SCATTER_PAYTABLE = { 3: 2, 4: 10, 5: 50 };
 export const FREE_SPINS_TRIGGER_COUNT = 3;
 export const FREE_SPINS_AWARDED = 10;
+export const FREE_SPIN_MULTIPLIER = 2; // all wins doubled during free spins
+
+// Pick-a-box bonus: a TIKI visible on each of reels 2, 3 AND 4 (base game
+// only). Player picks one of three boxes; prizes are multiples of total bet.
+export const BONUS_PRIZES = [
+  { mult: 5, weight: 50 },
+  { mult: 10, weight: 30 },
+  { mult: 20, weight: 15 },
+  { mult: 50, weight: 5 },
+];
+
+export function pickBonusPrize(rng = Math.random) {
+  const total = BONUS_PRIZES.reduce((s, p) => s + p.weight, 0);
+  let roll = rng() * total;
+  for (const p of BONUS_PRIZES) {
+    roll -= p.weight;
+    if (roll < 0) return p.mult;
+  }
+  return BONUS_PRIZES[BONUS_PRIZES.length - 1].mult;
+}
 
 // 20 fixed paylines: row index (0 top, 1 middle, 2 bottom) per reel.
 export const PAYLINES = [
@@ -143,14 +164,20 @@ export function spin(rng = Math.random) {
  * @param {string[][]} grid - grid[reel][row]
  * @param {number} betPerLine
  * @param {number} lines - number of active paylines (fixed at 20 in the game)
+ * @param {object} [opts]
+ * @param {number} [opts.multiplier=1] - applied to line + scatter wins (free spins)
+ * @param {boolean} [opts.allowBonus=true] - pick-a-box can trigger (base game only)
  * @returns {{
  *   totalWin: number,
  *   lineWins: Array<{ line: number, symbol: string, count: number, win: number, cells: Array<[number, number]> }>,
  *   scatter: { count: number, win: number, cells: Array<[number, number]> },
  *   freeSpinsAwarded: number,
+ *   bonusTriggered: boolean,
+ *   wildCells: Array<[number, number]>,
  * }}
  */
-export function evaluate(grid, betPerLine, lines = LINES) {
+export function evaluate(grid, betPerLine, lines = LINES, opts = {}) {
+  const { multiplier = 1, allowBonus = true } = opts;
   const totalBet = betPerLine * lines;
   const lineWins = [];
 
@@ -180,7 +207,7 @@ export function evaluate(grid, betPerLine, lines = LINES) {
     if (symbol === null || count < 3) continue;
     const pays = PAYTABLE[symbol];
     if (!pays) continue;
-    const win = pays[count - 3] * betPerLine;
+    const win = pays[count - 3] * betPerLine * multiplier;
     if (win > 0) {
       lineWins.push({
         line: li,
@@ -199,9 +226,20 @@ export function evaluate(grid, betPerLine, lines = LINES) {
     }
   }
   const scatterCount = scatterCells.length;
-  const scatterWin = (SCATTER_PAYTABLE[Math.min(scatterCount, 5)] || 0) * totalBet;
+  const scatterWin =
+    (SCATTER_PAYTABLE[Math.min(scatterCount, 5)] || 0) * totalBet * multiplier;
 
   const freeSpinsAwarded = scatterCount >= FREE_SPINS_TRIGGER_COUNT ? FREE_SPINS_AWARDED : 0;
+
+  const wildCells = [];
+  for (let r = 0; r < REELS; r++) {
+    for (let row = 0; row < ROWS; row++) {
+      if (grid[r][row] === WILD) wildCells.push([r, row]);
+    }
+  }
+  // TIKI trio: at least one wild visible on each of reels 2, 3 and 4.
+  const bonusTriggered =
+    allowBonus && [1, 2, 3].every((r) => grid[r].includes(WILD));
 
   const totalWin = lineWins.reduce((sum, w) => sum + w.win, 0) + scatterWin;
   return {
@@ -209,12 +247,14 @@ export function evaluate(grid, betPerLine, lines = LINES) {
     lineWins,
     scatter: { count: scatterCount, win: scatterWin, cells: scatterCells },
     freeSpinsAwarded,
+    bonusTriggered,
+    wildCells,
   };
 }
 
 /** Convenience: spin + evaluate in one call. */
-export function playSpin(betPerLine, lines = LINES, rng = Math.random) {
+export function playSpin(betPerLine, lines = LINES, rng = Math.random, opts = {}) {
   const { stops, grid } = spin(rng);
-  const result = evaluate(grid, betPerLine, lines);
+  const result = evaluate(grid, betPerLine, lines, opts);
   return { stops, grid, ...result };
 }
