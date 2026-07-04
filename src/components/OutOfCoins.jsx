@@ -1,44 +1,49 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AD_REWARD, useGameStore } from '../store.js';
+import { showRewardedAd } from '../ads.js';
+import { COIN_PACKS, billingAvailable, purchaseProduct } from '../billing.js';
 import * as sound from '../sound.js';
 import { track } from '../analytics.js';
 
-const AD_SECONDS = 5;
-
-// Coin pack tiers, display-only until Google Play Billing lands (Phase 5).
-const PACKS = [
-  { coins: 200_000, price: 'NZ$1.99' },
-  { coins: 1_200_000, price: 'NZ$9.99' },
-  { coins: 15_000_000, price: 'NZ$99' },
-];
-
 /**
- * Out-of-coins flow (Phase 4): rewarded "ad" (stub timer — AdMob replaces it
- * in Phase 5) or the coin shop preview.
+ * Out-of-coins flow: AdMob rewarded video, or the coin-pack shop (Google
+ * Play Billing via RevenueCat). Packs stay a preview off-native or before a
+ * store API key is configured — same UI, no purchase call is made.
  */
 export default function OutOfCoins({ onClose }) {
-  const [adLeft, setAdLeft] = useState(null); // null = not watching
+  const [adSecondsLeft, setAdSecondsLeft] = useState(null); // null = not watching
+  const [pending, setPending] = useState(null); // productId mid-purchase
 
-  useEffect(() => {
-    if (adLeft === null) return undefined;
-    if (adLeft === 0) {
-      useGameStore.getState().claimAdReward();
-      track('ad_reward', { prize: AD_REWARD });
-      sound.winBig();
-      onClose();
-      return undefined;
-    }
-    const t = setTimeout(() => setAdLeft((s) => s - 1), 1000);
-    return () => clearTimeout(t);
-  }, [adLeft, onClose]);
+  async function watchAd() {
+    setAdSecondsLeft(5);
+    const earned = await showRewardedAd({ onTick: setAdSecondsLeft });
+    setAdSecondsLeft(null);
+    if (!earned) return;
+    useGameStore.getState().claimAdReward();
+    track('ad_reward', { prize: AD_REWARD });
+    sound.winBig();
+    onClose();
+  }
 
-  if (adLeft !== null) {
+  async function buyPack(pack) {
+    if (!billingAvailable() || pending) return;
+    setPending(pack.productId);
+    const bought = await purchaseProduct(pack.productId);
+    setPending(null);
+    if (!bought) return;
+    useGameStore.getState().creditCoinPack(pack.coins);
+    track('iap_purchase', { productId: pack.productId, coins: pack.coins });
+    sound.winBig();
+    onClose();
+  }
+
+  if (adSecondsLeft !== null) {
     return (
       <div className="bonus-overlay" role="dialog" aria-label="Rewarded ad">
         <div className="bonus-card">
           <h2 className="bonus-title">📺 YOUR REWARD IS COMING</h2>
-          <p className="bonus-sub">Ad placeholder — AdMob rewarded video lands in Phase 5</p>
-          <div className="ad-countdown">{adLeft}</div>
+          <p className="bonus-sub">Hang tight — the video is playing</p>
+          <div className="ad-countdown">{adSecondsLeft}</div>
         </div>
       </div>
     );
@@ -49,22 +54,27 @@ export default function OutOfCoins({ onClose }) {
       <div className="bonus-card">
         <h2 className="bonus-title">😅 OUT OF COINS</h2>
         <p className="bonus-sub">No worries e hoa — grab a refill:</p>
-        <button
-          type="button"
-          className="spin-btn bonus-collect"
-          onClick={() => setAdLeft(AD_SECONDS)}
-        >
+        <button type="button" className="spin-btn bonus-collect" onClick={watchAd}>
           📺 WATCH AD · +{AD_REWARD.toLocaleString()}
         </button>
         <div className="packs">
-          {PACKS.map((p) => (
-            <button key={p.price} type="button" className="pack" disabled title="Coming in Phase 5">
+          {COIN_PACKS.map((p) => (
+            <button
+              key={p.productId}
+              type="button"
+              className="pack"
+              disabled={!billingAvailable() || pending !== null}
+              title={billingAvailable() ? undefined : 'Preview only — arrives with the Play Store release'}
+              onClick={() => buyPack(p)}
+            >
               <span className="pack-coins">🪙 {p.coins.toLocaleString()}</span>
-              <span className="pack-price">{p.price}</span>
+              <span className="pack-price">{pending === p.productId ? '…' : p.price}</span>
             </button>
           ))}
         </div>
-        <p className="paytable-note">Coin packs arrive with Google Play Billing in Phase 5.</p>
+        {!billingAvailable() && (
+          <p className="paytable-note">Coin packs go live with the Play Store release.</p>
+        )}
         <button type="button" className="text-btn visible" onClick={onClose}>
           Not now
         </button>

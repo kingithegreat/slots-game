@@ -69,6 +69,8 @@ export function getSummary() {
     bonusTriggers: count('bonus_trigger'),
     outOfCoinsShown: count('out_of_coins_shown'),
     adRewards: count('ad_reward'),
+    iapPurchases: count('iap_purchase'),
+    piggySmashes: count('piggy_smash'),
     levelUps: count('level_up'),
   };
 }

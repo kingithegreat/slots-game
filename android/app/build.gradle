@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+// Release signing reads from android/keystore.properties, which is never
+// committed (see .gitignore). Without it, `assembleRelease`/`bundleRelease`
+// fall back to unsigned output — fine for CI checks, not for the Play Store.
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace = "nz.pokiepalace.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +25,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

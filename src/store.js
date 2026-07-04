@@ -19,11 +19,11 @@ export const DAY_MS = 24 * 60 * 60 * 1000;
 export const HOUR_MS = 60 * 60 * 1000;
 export const hourlyAmount = (level) => 2000 + 500 * (level - 1);
 
-// --- Out-of-coins rewarded "ad" (stubbed until AdMob lands in Phase 5)
+// --- Out-of-coins rewarded ad (AdMob; see src/ads.js)
 export const AD_REWARD = 50_000;
 
 // --- Piggy bank: a cut of every win accrues in a locked bank; smashing it
-// is a small IAP (Phase 5 billing — accrual runs now so it's full at launch).
+// is a small IAP (Google Play Billing via RevenueCat; see src/billing.js).
 export const PIGGY_RATE = 0.05;
 
 export const useGameStore = create(
@@ -38,7 +38,7 @@ export const useGameStore = create(
       xp: 0, // progress within the current level
       lastDailyClaim: 0, // epoch ms
       lastHourlyClaim: 0, // epoch ms
-      piggyBank: 0, // locked coins; smashing is a Phase 5 IAP
+      piggyBank: 0, // locked coins; smashing is a Google Play IAP
       // Free spins survive a reload: count + the bet they were triggered at.
       freeSpinsLeft: 0,
       freeSpinBet: 0,
@@ -118,8 +118,14 @@ export const useGameStore = create(
         return prize;
       },
 
-      /** Rewarded-ad stub payout (real AdMob flow lands in Phase 5). */
       claimAdReward: () => set((s) => ({ balance: s.balance + AD_REWARD })),
+
+      /** Coin pack IAP lands as a straight balance credit. */
+      creditCoinPack: (coins) => set((s) => ({ balance: s.balance + coins })),
+
+      /** Smashing the piggy bank empties it into the balance. */
+      smashPiggyBank: () =>
+        set((s) => ({ balance: s.balance + s.piggyBank, piggyBank: 0 })),
     }),
     {
       name: 'pokie-palace',

@@ -34,6 +34,28 @@ npx cap open android   # or: cd android && ./gradlew assembleDebug
 Haptics automatically use the native Capacitor plugin inside the shell and
 fall back to the Web Vibration API in browsers.
 
+### Monetisation config (Phase 5)
+
+Rewarded ads (`src/ads.js`) and coin/piggy-bank IAP (`src/billing.js` via
+RevenueCat) both ship wired up to test/sandbox IDs so the flow works out of
+the box in dev. Before a real release, set:
+
+| What | Env var | Default |
+| --- | --- | --- |
+| AdMob app ID | `VITE_ADMOB_APP_ID` | Google's public test app ID |
+| AdMob rewarded ad unit | `VITE_ADMOB_REWARDED_UNIT_ID` | Google's public test unit |
+| RevenueCat public API key | `VITE_REVENUECAT_API_KEY` | unset — billing stays disabled, shop renders as preview |
+
+The AdMob app ID also needs to be mirrored into
+`android/app/src/main/AndroidManifest.xml`
+(`com.google.android.gms.ads.APPLICATION_ID`) since the native SDK reads it
+from there, not from the web bundle. Coin-pack and piggy-bank smash product
+IDs (`src/billing.js`) must match the in-app products configured in the Play
+Console / RevenueCat dashboard.
+
+Off-native (browser), rewarded ads fall back to a 5s countdown stub and
+billing is always unavailable — there's no store to talk to.
+
 ### Analytics
 
 `src/analytics.js` buffers events locally (spin count, session length, coin
@@ -103,8 +125,30 @@ Current tuning (independent 2M-spin full-cycle runs per machine):
 - [x] **Phase 4 — Retention & economy**: daily bonus wheel, hourly top-up,
   level/XP progression, second themed machine (Glowworm Grotto), out-of-coins
   flow with rewarded-ad stub + coin-shop preview
-- [ ] Phase 5 — Monetisation: rewarded ads (AdMob), coin pack IAP, piggy-bank
-  smash purchase (accrual of 5% of every win is already live)
+- [x] **Phase 5 — Monetisation**: rewarded ads (AdMob, `src/ads.js`), coin
+  pack IAP and piggy-bank smash purchase (Google Play Billing via
+  RevenueCat, `src/billing.js`) — ships on test/sandbox IDs, needs real
+  AdMob app ID + RevenueCat API key before release (see Monetisation config)
 - [ ] Phase 6 — Ship: Play Store listing + signed release build (Capacitor
-  Android scaffold, native haptics and the analytics event layer are done;
-  remaining: signing key, store listing, analytics backend via `setSink`)
+  Android scaffold, native haptics, the analytics event layer and the release
+  signing config are done — see Release signing below; remaining: real
+  AdMob/RevenueCat credentials, store listing submission, analytics backend
+  via `setSink`)
+
+## Release signing
+
+`android/app/build.gradle` reads signing credentials from
+`android/keystore.properties` (gitignored — never commit it or the
+`.keystore` file). Copy `android/keystore.properties.example`, fill in the
+real values, and point `storeFile` at your release keystore:
+
+```sh
+keytool -genkeypair -v -keystore android/app/release.keystore \
+  -alias <your-alias> -keyalg RSA -keysize 2048 -validity 10950
+```
+
+Without `keystore.properties` present, `assembleRelease`/`bundleRelease`
+build unsigned — fine for CI, not for a Play Store upload. Back up the
+keystore and its password somewhere durable (password manager, not git) —
+losing it means you can never publish an update to the same Play Store
+listing again.
