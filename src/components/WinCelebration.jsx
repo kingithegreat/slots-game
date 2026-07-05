@@ -35,15 +35,46 @@ function CoinShower({ count }) {
   );
 }
 
+function SparkleBurst() {
+  const sparkles = useMemo(
+    () =>
+      Array.from({ length: 8 }, (_, i) => ({
+        id: i,
+        angle: (360 / 8) * i + (Math.random() * 20 - 10),
+        delay: Math.random() * 0.1,
+      })),
+    []
+  );
+  return (
+    <div className="sparkle-burst" aria-hidden="true">
+      {sparkles.map((s) => (
+        <span
+          key={s.id}
+          className="sparkle"
+          style={{
+            '--angle': `${s.angle}deg`,
+            animationDelay: `${s.delay}s`,
+          }}
+        >
+          ✨
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /**
- * Win celebration tiers (Phase 2):
- *   big  → coin fountain over the machine
- *   mega → full-screen takeover with counter roll-up
+ * Win celebration tiers:
+ *   small → quick sparkle burst, auto-dismisses fast — every winning spin
+ *           gets *something*, but it never slows down the next spin
+ *   big   → coin fountain over the machine
+ *   mega  → full-screen takeover with counter roll-up
  */
 export default function WinCelebration({ tier, amount, onDone }) {
   useEffect(() => {
     if (!tier) return undefined;
-    const t = setTimeout(onDone, tier === 'mega' ? 3600 : 2400);
+    const durations = { small: 900, big: 2400, mega: 3600 };
+    const t = setTimeout(onDone, durations[tier] ?? 2400);
     return () => clearTimeout(t);
   }, [tier, onDone]);
 
@@ -62,6 +93,10 @@ export default function WinCelebration({ tier, amount, onDone }) {
         </div>
       </div>
     );
+  }
+
+  if (tier === 'small') {
+    return <SparkleBurst />;
   }
 
   return <CoinShower count={26} />;

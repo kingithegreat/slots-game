@@ -21,4 +21,16 @@ export const haptics = {
     if (isNative) Haptics.vibrate({ duration: 300 }).catch(() => {});
     else if (canVibrate) navigator.vibrate([60, 40, 60, 40, 120]);
   },
+  // Distinct from bigWin — longer, builds in intensity, so a mega win reads
+  // as clearly bigger on the wrist/pocket, not just a repeat of a big win.
+  megaWin: () => {
+    if (isNative) {
+      impact(ImpactStyle.Heavy)
+        .then(() => new Promise((r) => setTimeout(r, 120)))
+        .then(() => Haptics.vibrate({ duration: 400 }))
+        .catch(() => {});
+    } else if (canVibrate) {
+      navigator.vibrate([50, 30, 50, 30, 80, 30, 220]);
+    }
+  },
 };
