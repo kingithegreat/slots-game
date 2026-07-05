@@ -235,7 +235,7 @@ export default function App() {
     const tier = tierFor(result.totalWin, spinTotalBet);
     if (tier === 'mega') {
       sound.winMega();
-      haptics.bigWin();
+      haptics.megaWin();
       setCelebration({ tier: 'mega', amount: result.totalWin });
       setMessage({ text: `💥 MEGA WIN — ${result.totalWin.toLocaleString()} coins!`, tier: 'jackpot' });
     } else if (tier === 'big') {
@@ -246,6 +246,7 @@ export default function App() {
     } else if (tier === 'small') {
       sound.winSmall();
       haptics.win();
+      setCelebration({ tier: 'small', amount: result.totalWin });
       setMessage({ text: `You win ${result.totalWin.toLocaleString()} coins`, tier: 'win' });
     } else {
       setMessage(

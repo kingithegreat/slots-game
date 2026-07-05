@@ -543,6 +543,31 @@
   font-size: 0.9rem;
 }
 
+.sparkle-burst {
+  position: fixed;
+  top: 42%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.sparkle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 22px;
+  transform-origin: 0 0;
+  animation: sparkle-pop 0.7s ease-out both;
+}
+
+@keyframes sparkle-pop {
+  0% { opacity: 0; transform: rotate(var(--angle, 0deg)) translateX(0) scale(0.4); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--angle, 0deg)) translateX(60px) scale(1); }
+}
+
 /* ---------- Pick-a-box bonus ---------- */
 
 .bonus-overlay {
