@@ -1,0 +1,102 @@
+name: Android build
+
+# Builds the debug APK via Capacitor + Gradle. Kept separate from ci.yml
+# (which gates claude/** auto-merge) since this needs a full Android SDK
+# and isn't verifiable from a sandboxed dev session — scoped to main
+# pushes and manual dispatch so a flaky Android toolchain never blocks
+# feature-branch merges.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check-signing-secret:
+    runs-on: ubuntu-latest
+    outputs:
+      has_keystore: ${{ steps.check.outputs.has_keystore }}
+    steps:
+      - id: check
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "has_keystore=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_keystore=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-debug-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pokie-palace-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+  build-release-apk:
+    # Signed release build — only runs once a keystore is provisioned via
+    # repo secrets (see android/keystore.properties.example for what to
+    # generate and where these secret names come from). Skips cleanly
+    # otherwise so this workflow doesn't fail before that setup is done.
+    #
+    # NOTE: `if:` conditions cannot reference `secrets` directly — GitHub
+    # Actions rejects that at workflow-parse time with a startup_failure
+    # (zero jobs run, no logs, instant "failure" on every single push).
+    # Lesson learned the hard way on Princess Ninja's android.yml — see
+    # that repo's fix commit. The guard job above evaluates the secret in
+    # a normal step (where secrets ARE allowed) and exposes a plain
+    # string output instead, which `if:` is allowed to read.
+    needs: check-signing-secret
+    if: needs.check-signing-secret.outputs.has_keystore == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Write keystore and signing config from secrets
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/pokie-palace-release.keystore
+          cat > keystore.properties <<EOF
+          storeFile=app/pokie-palace-release.keystore
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pokie-palace-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
