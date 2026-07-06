@@ -44,6 +44,7 @@ the box in dev. Before a real release, set:
 | --- | --- | --- |
 | AdMob app ID | `VITE_ADMOB_APP_ID` | Google's public test app ID |
 | AdMob rewarded ad unit | `VITE_ADMOB_REWARDED_UNIT_ID` | Google's public test unit |
+| AdMob interstitial ad unit | `VITE_ADMOB_INTERSTITIAL_UNIT_ID` | Google's public test unit |
 | RevenueCat public API key | `VITE_REVENUECAT_API_KEY` | unset — billing stays disabled, shop renders as preview |
 
 The AdMob app ID also needs to be mirrored into
@@ -53,8 +54,15 @@ from there, not from the web bundle. Coin-pack and piggy-bank smash product
 IDs (`src/billing.js`) must match the in-app products configured in the Play
 Console / RevenueCat dashboard.
 
-Off-native (browser), rewarded ads fall back to a 5s countdown stub and
-billing is always unavailable — there's no store to talk to.
+A light interstitial (`showInterstitialAd` in `src/ads.js`) shows at machine
+switches — never mid-spin, never on the first switch of a session, and
+capped to one per `INTERSTITIAL_COOLDOWN_MS` (90s default) so it stays
+"light" rather than spammy. The gate itself (`canShowInterstitial`) is a
+pure function, easy to unit test if a test runner is ever added here.
+
+Off-native (browser), rewarded ads fall back to a 5s countdown stub,
+interstitials resolve immediately after a console note, and billing is
+always unavailable — there's no store to talk to.
 
 ### Analytics
 
@@ -125,10 +133,11 @@ Current tuning (independent 2M-spin full-cycle runs per machine):
 - [x] **Phase 4 — Retention & economy**: daily bonus wheel, hourly top-up,
   level/XP progression, second themed machine (Glowworm Grotto), out-of-coins
   flow with rewarded-ad stub + coin-shop preview
-- [x] **Phase 5 — Monetisation**: rewarded ads (AdMob, `src/ads.js`), coin
-  pack IAP and piggy-bank smash purchase (Google Play Billing via
-  RevenueCat, `src/billing.js`) — ships on test/sandbox IDs, needs real
-  AdMob app ID + RevenueCat API key before release (see Monetisation config)
+- [x] **Phase 5 — Monetisation**: rewarded ads + light machine-switch
+  interstitials (AdMob, `src/ads.js`), coin pack IAP and piggy-bank smash
+  purchase (Google Play Billing via RevenueCat, `src/billing.js`) — ships on
+  test/sandbox IDs, needs real AdMob app ID + RevenueCat API key before
+  release (see Monetisation config)
 - [ ] Phase 6 — Ship: Play Store listing + signed release build (Capacitor
   Android scaffold, native haptics, the analytics event layer and the release
   signing config are done — see Release signing below; remaining: real

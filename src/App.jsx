@@ -12,7 +12,7 @@ import { MACHINES, MACHINE_IDS } from './engine/machines.js';
 import { useGameStore, BET_STEPS, xpForNextLevel, HOUR_MS, hourlyAmount } from './store.js';
 import * as sound from './sound.js';
 import { haptics } from './haptics.js';
-import { initAds } from './ads.js';
+import { initAds, showInterstitialAd, canShowInterstitial } from './ads.js';
 import { track } from './analytics.js';
 import Reel from './components/Reel.jsx';
 import RollUp from './components/RollUp.jsx';
@@ -84,6 +84,9 @@ export default function App() {
   const machineRef = useRef(machine);
   machineRef.current = machine;
   const paytableRef = useRef(null);
+  // Timestamp of the last-shown interstitial (or null = none shown this
+  // session yet); gates the "light, never spam" machine-switch interstitial.
+  const lastInterstitialRef = useRef(null);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   useEffect(() => sound.setMuted(muted), [muted]);
@@ -324,6 +327,18 @@ export default function App() {
     setHighlights(new Set());
     track('machine_switch', { machine: id });
     setMessage({ text: `${MACHINES[id].name} — ${MACHINES[id].tagline}`, tier: '' });
+
+    // Light interstitial at machine-switch transitions only (never mid-spin,
+    // never on the first switch, capped to one per cooldown window) — see
+    // ads.js's canShowInterstitial for the exact rule.
+    const now = Date.now();
+    if (canShowInterstitial(lastInterstitialRef.current, now)) {
+      lastInterstitialRef.current = now;
+      track('interstitial_shown', { trigger: 'machine_switch', machine: id });
+      showInterstitialAd();
+    } else if (lastInterstitialRef.current == null) {
+      lastInterstitialRef.current = now; // arms the cooldown from the first switch
+    }
   }
 
   function handleHourly() {
