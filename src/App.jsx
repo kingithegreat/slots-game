@@ -13,7 +13,8 @@ import { useGameStore, BET_STEPS, xpForNextLevel, HOUR_MS, hourlyAmount } from '
 import * as sound from './sound.js';
 import { haptics } from './haptics.js';
 import { initAds, showInterstitialAd, canShowInterstitial } from './ads.js';
-import { track } from './analytics.js';
+import { track, setSink } from './analytics.js';
+import { initAnalyticsSink } from './analytics-sink.js';
 import Reel from './components/Reel.jsx';
 import RollUp from './components/RollUp.jsx';
 import Paytable from './components/Paytable.jsx';
@@ -92,6 +93,11 @@ export default function App() {
   useEffect(() => sound.setMuted(muted), [muted]);
   useEffect(() => {
     initAds();
+    // Phase 6: wire analytics.js's local event buffer to a real backend when
+    // VITE_ANALYTICS_ENDPOINT is configured (see analytics-sink.js). No-op
+    // (events keep buffering locally only) until that env var is set.
+    const sink = initAnalyticsSink();
+    if (sink) setSink(sink);
   }, []);
   useEffect(() => {
     const t = setInterval(() => setClock(Date.now()), 20_000);
