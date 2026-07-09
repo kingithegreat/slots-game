@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { WHEEL_SEGMENTS, wheelBase, useGameStore } from '../store.js';
+import { streakMultiplier } from '../streak.js';
 import * as sound from '../sound.js';
 import { track } from '../analytics.js';
 
@@ -12,9 +13,16 @@ const WHEEL_COLORS = ['#f5c542', '#1a4459', '#e8834a', '#235a75', '#f5c542', '#1
  */
 export default function DailyWheel({ onClose }) {
   const level = useGameStore((s) => s.level);
+  const nextDailyStreak = useGameStore((s) => s.nextDailyStreak);
+  const storedStreak = useGameStore((s) => s.dailyStreak);
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [prize, setPrize] = useState(null);
+
+  // Before the spin, show the streak this claim will land on; afterwards the
+  // store holds the realised streak.
+  const shownStreak = prize === null ? nextDailyStreak() : storedStreak;
+  const streakMult = streakMultiplier(shownStreak);
 
   const base = wheelBase(level);
 
@@ -29,7 +37,7 @@ export default function DailyWheel({ onClose }) {
     setTimeout(() => {
       sound.spinEnd();
       const won = useGameStore.getState().claimDaily(seg);
-      track('daily_wheel', { prize: won });
+      track('daily_wheel', { prize: won, streak: useGameStore.getState().dailyStreak });
       setPrize(won);
       setSpinning(false);
       sound.winBig();
@@ -49,6 +57,11 @@ export default function DailyWheel({ onClose }) {
             ? 'One free spin every day — give it a whirl!'
             : `You won ${prize.toLocaleString()} coins!`}
         </p>
+        <div className="streak-badge">
+          {streakMult > 1
+            ? `🔥 ${shownStreak}-day streak · ×${streakMult.toFixed(2)} bonus`
+            : '🔥 Come back tomorrow to start a streak bonus'}
+        </div>
         <div className="wheel-wrap">
           <div className="wheel-pointer" aria-hidden="true">▼</div>
           <div

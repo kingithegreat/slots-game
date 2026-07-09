@@ -604,6 +604,18 @@
   font-weight: bold;
 }
 
+.streak-badge {
+  display: inline-block;
+  margin: 0 auto 16px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: var(--gold);
+  background: rgba(245, 197, 66, 0.1);
+  border: 1px solid var(--gold-dark);
+}
+
 .bonus-boxes {
   display: flex;
   justify-content: center;

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { LINES } from './engine/engine.js';
 import { MACHINES, DEFAULT_MACHINE } from './engine/machines.js';
+import { streakMultiplier, nextStreakValue } from './streak.js';
 
 export const BET_STEPS = [1, 2, 5, 10, 25, 50, 100];
 export const STARTING_BALANCE = 100_000;
@@ -38,6 +39,7 @@ export const useGameStore = create(
       xp: 0, // progress within the current level
       lastDailyClaim: 0, // epoch ms
       lastHourlyClaim: 0, // epoch ms
+      dailyStreak: 0, // consecutive daily-wheel claims (see streak.js)
       piggyBank: 0, // locked coins; smashing is a Google Play IAP
       // Free spins survive a reload: count + the bet they were triggered at.
       freeSpinsLeft: 0,
@@ -103,10 +105,15 @@ export const useGameStore = create(
       endFreeSpins: () => set({ freeSpinsLeft: 0, freeSpinBet: 0 }),
 
       dailyReady: (now = Date.now()) => now - get().lastDailyClaim >= DAY_MS,
+      /** The streak a claim right now would land on (for pre-claim display). */
+      nextDailyStreak: (now = Date.now()) =>
+        nextStreakValue(get().lastDailyClaim, get().dailyStreak, now),
       claimDaily: (segmentIndex, now = Date.now()) => {
         if (!get().dailyReady(now)) return 0;
-        const prize = WHEEL_SEGMENTS[segmentIndex] * wheelBase(get().level);
-        set((s) => ({ balance: s.balance + prize, lastDailyClaim: now }));
+        const streak = nextStreakValue(get().lastDailyClaim, get().dailyStreak, now);
+        const base = WHEEL_SEGMENTS[segmentIndex] * wheelBase(get().level);
+        const prize = Math.floor(base * streakMultiplier(streak));
+        set((s) => ({ balance: s.balance + prize, lastDailyClaim: now, dailyStreak: streak }));
         return prize;
       },
 
@@ -138,6 +145,7 @@ export const useGameStore = create(
         xp: s.xp,
         lastDailyClaim: s.lastDailyClaim,
         lastHourlyClaim: s.lastHourlyClaim,
+        dailyStreak: s.dailyStreak,
         piggyBank: s.piggyBank,
         freeSpinsLeft: s.freeSpinsLeft,
         freeSpinBet: s.freeSpinBet,
